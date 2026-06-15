@@ -22,7 +22,7 @@ provider "mongodbatlas" {
 variable "mongodb_atlas_org_id" {
   type        = string
   description = "MongoDB Atlas Organization ID"
-  default     = "YOUR_ORG_ID"
+  default     = "FABRIZIO SALVADOR ELIAS's Org - 2026-06-05"
 }
 
 # Azure App Service Resource Group
