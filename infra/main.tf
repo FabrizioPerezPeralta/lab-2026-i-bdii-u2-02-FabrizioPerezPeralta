@@ -5,7 +5,7 @@ terraform {
       version = "~> 3.0"
     }
     mongodbatlas = {
-      source = "mongodb/mongodbatlas"
+      source  = "mongodb/mongodbatlas"
       version = "~> 1.8.0"
     }
   }
@@ -71,7 +71,7 @@ resource "mongodbatlas_cluster" "cluster" {
   project_id   = mongodbatlas_project.project.id
   name         = "BooksApiCluster"
   cluster_type = "REPLICASET"
-  
+
   provider_name               = "TENANT"
   backing_provider_name       = "AZURE"
   provider_region_name        = "US_EAST_2"
