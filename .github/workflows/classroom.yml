@@ -1,0 +1,80 @@
+name: Autograding Tests
+'on':
+- push
+- repository_dispatch
+permissions:
+  checks: write
+  actions: read
+  contents: read
+jobs:
+  run-autograding-tests:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-classroom[bot]'
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: t1
+      id: t1
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: t1
+        setup-command: ''
+        command: cat Dockerfile | grep "asp"
+        timeout: 10
+        max-score: 2
+    - name: t2
+      id: t2
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: t2
+        setup-command: ''
+        command: cat infra/main.tf | grep "mongo"
+        timeout: 10
+        max-score: 2
+    - name: t3
+      id: t3
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: t3
+        setup-command: ''
+        command: cat .github/workflows/infra.yml | grep apply
+        timeout: 10
+        max-score: 2
+    - name: t4
+      id: t4
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: t4
+        setup-command: ''
+        command: cat .github/workflows/deploydb.yml | grep mongo
+        timeout: 10
+        max-score: 2
+    - name: t5
+      id: t5
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: t5
+        setup-command: ''
+        command: cat .github/workflows/buildimage.yml | grep docker
+        timeout: 10
+        max-score: 2
+    - name: t6
+      id: t6
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: t6
+        setup-command: ''
+        command: cat .github/workflows/deployimage.yml | grep az
+        timeout: 10
+        max-score: 2
+    - name: Autograding Reporter
+      uses: classroom-resources/autograding-grading-reporter@v1
+      env:
+        T1_RESULTS: "${{steps.t1.outputs.result}}"
+        T2_RESULTS: "${{steps.t2.outputs.result}}"
+        T3_RESULTS: "${{steps.t3.outputs.result}}"
+        T4_RESULTS: "${{steps.t4.outputs.result}}"
+        T5_RESULTS: "${{steps.t5.outputs.result}}"
+        T6_RESULTS: "${{steps.t6.outputs.result}}"
+      with:
+        runners: t1,t2,t3,t4,t5,t6

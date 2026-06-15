@@ -1,0 +1,24 @@
+name: Deploy Image to Azure
+
+on:
+  workflow_run:
+    workflows: ["Build and Publish Image"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'booksapi-webapp-demo'
+          images: 'ghcr.io/${{ github.repository }}:main'

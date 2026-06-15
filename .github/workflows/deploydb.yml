@@ -1,0 +1,30 @@
+name: Deploy Database Data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-db:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up MongoDB Shell
+      run: |
+        sudo apt-get install gnupg
+        wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | sudo apt-key add -
+        echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/6.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
+        sudo apt-get update
+        sudo apt-get install -y mongodb-mongosh
+
+    - name: Load Initial Data
+      env:
+        MONGO_URI: ${{ secrets.MONGO_URI }}
+      run: |
+        mongosh $MONGO_URI --eval "
+          use BookstoreDb;
+          db.Books.insertMany([
+            {'Name':'Design Patterns','Price':54.93,'Category':'Computers','Author':'Ralph Johnson'},
+            {'Name':'Clean Code','Price':43.15,'Category':'Computers','Author':'Robert C. Martin'}
+          ]);
+        "
