@@ -241,9 +241,279 @@ dotnet run
 
 ---
 ## Actividades Encargadas
-1. Genere el archivo Dockerfile para dockerizar el API creado.
-2. Genere el archivo main.tf dentro de la carpeta infra, para crear mediante Terraform la infrastructura, en MongoDb Atlas (https://www.mongodb.com/products/platform/atlas-database) y el backend en un servicio Azure AppService u otro servicio Saas que maneje contenedores
-3. Genere la automatizacion infra.yml, que despliegue la infraestrutura.
-4. Genere la automatización deploydb.yml, que permita cargar datos en su base de datos MongoDB.
-5. Genere la automatizacion buildimage.yml para construir la imagen y publicarla como paquete en su repositorio.
-6. Genere la automatizacion deployimage.yml que despliege la imagen previamente publicada en el servicio Web que maneje contenedores.
+
+### 1. Genere el archivo Dockerfile para dockerizar el API creado.
+El archivo fue creado en la raíz del proyecto usando el SDK de .NET 9.0.
+```dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build-env
+WORKDIR /app
+
+# Copy everything
+COPY BooksApi/ ./BooksApi/
+WORKDIR /app/BooksApi
+RUN dotnet restore
+RUN dotnet publish -c Release -o out
+
+# Build runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+COPY --from=build-env /app/BooksApi/out .
+ENTRYPOINT ["dotnet", "BooksApi.dll"]
+```
+**Evidencia:**
+![Evidencia](evidencias/actividad1.png)
+
+### 2. Genere el archivo main.tf dentro de la carpeta infra, para crear mediante Terraform la infraestructura...
+Se implementó la infraestructura como código configurando Azure App Service y el clúster de MongoDB Atlas.
+```hcl
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.0"
+    }
+    mongodbatlas = {
+      source  = "mongodb/mongodbatlas"
+      version = "~> 1.8.0"
+    }
+  }
+}
+
+provider "azurerm" {
+  features {}
+}
+
+provider "mongodbatlas" {
+  # Requires MONGODB_ATLAS_PUBLIC_KEY and MONGODB_ATLAS_PRIVATE_KEY environment variables
+}
+
+variable "mongodb_atlas_org_id" {
+  type        = string
+  description = "MongoDB Atlas Organization ID"
+  default     = "6a222537d89a41113c4b0356"
+}
+
+# Azure App Service Resource Group
+resource "azurerm_resource_group" "rg" {
+  name     = "BooksApiRG"
+  location = "East US"
+}
+
+# Azure App Service Plan
+resource "azurerm_service_plan" "appserviceplan" {
+  name                = "BooksApiAppServicePlan"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  os_type             = "Linux"
+  sku_name            = "B1"
+}
+
+# Azure Web App for Containers
+resource "azurerm_linux_web_app" "webapp" {
+  name                = "booksapi-webapp-demo"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  service_plan_id     = azurerm_service_plan.appserviceplan.id
+
+  site_config {
+    application_stack {
+      docker_image_name   = "booksapi:latest"
+      docker_registry_url = "https://index.docker.io/v1/"
+    }
+  }
+
+  app_settings = {
+    "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = "false"
+    "BookStoreDatabase__ConnectionString" = "mongodb+srv://..."
+  }
+}
+
+# MongoDB Atlas Project
+resource "mongodbatlas_project" "project" {
+  name   = "BooksApiProject"
+  org_id = var.mongodb_atlas_org_id
+}
+
+# MongoDB Atlas Cluster
+resource "mongodbatlas_cluster" "cluster" {
+  project_id   = mongodbatlas_project.project.id
+  name         = "BooksApiCluster"
+  cluster_type = "REPLICASET"
+
+  provider_name               = "TENANT"
+  backing_provider_name       = "AZURE"
+  provider_region_name        = "US_EAST_2"
+  provider_instance_size_name = "M0"
+}
+```
+**Evidencia:**
+![Evidencia](evidencias/actividad2.png)
+
+### 3. Genere la automatización infra.yml, que despliegue la infraestructura.
+Se configuró GitHub Actions para autenticarse en Azure y correr el comando `terraform apply`.
+```yaml
+name: Deploy Infrastructure
+
+on:
+  push:
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v2
+
+    - name: Terraform Init
+      run: terraform init
+
+    - name: Terraform Format
+      run: terraform fmt -check
+
+    - name: Terraform Plan
+      run: terraform plan -input=false
+      env:
+        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        MONGODB_ATLAS_PUBLIC_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_KEY }}
+        MONGODB_ATLAS_PRIVATE_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_KEY }}
+
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform apply -auto-approve -input=false
+      env:
+        ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+        ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+        ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+        ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+        MONGODB_ATLAS_PUBLIC_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_KEY }}
+        MONGODB_ATLAS_PRIVATE_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_KEY }}
+```
+**Evidencia:**
+![Evidencia](evidencias/actividad3.png)
+
+### 4. Genere la automatización deploydb.yml, que permita cargar datos en su base de datos MongoDB.
+El contenedor de Mongo cargó exitosamente los libros mediante GitHub Actions.
+```yaml
+name: Deploy Database Data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-db:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up MongoDB Shell
+      run: |
+        sudo apt-get install gnupg
+        wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | sudo apt-key add -
+        echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/6.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
+        sudo apt-get update
+        sudo apt-get install -y mongodb-mongosh
+
+    - name: Load Initial Data
+      env:
+        MONGO_URI: ${{ secrets.MONGO_URI }}
+      run: |
+        mongosh $MONGO_URI --eval "
+          use BookstoreDb;
+          db.Books.insertMany([
+            {'Name':'Design Patterns','Price':54.93,'Category':'Computers','Author':'Ralph Johnson'},
+            {'Name':'Clean Code','Price':43.15,'Category':'Computers','Author':'Robert C. Martin'}
+          ]);
+        "
+```
+**Evidencia:**
+![Evidencia](evidencias/actividad4.png)
+
+### 5. Genere la automatización buildimage.yml para construir la imagen y publicarla como paquete.
+```yaml
+name: Build and Publish Image
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+```
+**Evidencia:**
+![Evidencia](evidencias/actividad5.png)
+
+### 6. Genere la automatización deployimage.yml que despliegue la imagen en el servicio Web.
+La API se desplegó con éxito y responde de manera pública a través de la nube.
+```yaml
+name: Deploy Image to Azure
+
+on:
+  workflow_run:
+    workflows: ["Build and Publish Image"]
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: 'booksapi-webapp-demo'
+          images: 'ghcr.io/fabrizioperezperalta/lab-2026-i-bdii-u2-02-fabrizioperezperalta:main'
+```
+**Evidencia:**
+![Evidencia](evidencias/actividad6.png)
