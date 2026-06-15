@@ -21,4 +21,4 @@ jobs:
         uses: azure/webapps-deploy@v2
         with:
           app-name: 'booksapi-webapp-demo'
-          images: 'ghcr.io/${{ github.repository }}:main'
+          images: 'ghcr.io/fabrizioperezperalta/lab-2026-i-bdii-u2-02-fabrizioperezperalta:main'
